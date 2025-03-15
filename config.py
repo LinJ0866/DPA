@@ -14,10 +14,10 @@ DATA = {
 }
 
 TRAIN = {
-    'GPU': "0, 1",
-    'epoch': 200,
+    'GPU': "0",
+    'epoch': 50,
     'learning_rate': 1e-4,
     'print_freq': 50,
-    'batch_size': 12,
+    'batch_size': 6,
     'img_size': 512
 }

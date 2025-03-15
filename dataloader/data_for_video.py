@@ -85,56 +85,66 @@ def randomPeper(img):
 
 
 class SalObjDataset(data.Dataset):
-    def __init__(self):
+    def __init__(self, dataset_root, dataset):
         self.trainsize = config.TRAIN['img_size']
-        main_image_root = os.path.join(config.DATA['data_root'], config.DATA['DAVIS_train_main'], 'RGB') + '/'
-        main_gt_root = os.path.join(config.DATA['data_root'], config.DATA['DAVIS_train_main'], 'GT') + '/'
-        main_flow_root = os.path.join(config.DATA['data_root'], config.DATA['DAVIS_train_main'], 'FLOW') + '/'
-
-        self.main_images = [main_image_root + f for f in os.listdir(main_image_root) if f.endswith('.jpg')]
-        self.main_gts = [main_gt_root + f for f in os.listdir(main_gt_root) if f.endswith('.jpg') or f.endswith('.png')]
-        self.main_flows = [main_flow_root + f for f in os.listdir(main_flow_root) if f.endswith('.jpg') or f.endswith('.png')]
         
-        self.main_images = sorted(self.main_images)
-        self.main_gts = sorted(self.main_gts)
-        self.main_flows = sorted(self.main_flows)
+        if dataset == 'rdvs':
+            lable_rgb = 'rgb'
+            lable_depth = 'Depth'
+            lable_gt = 'ground-truth'
+            lable_flow = 'FLOW'
 
-        self.main_image_dict = self.get_image_class_dict(self.main_images)
-        self.main_flow_dict = self.get_image_class_dict(self.main_flows)
+            data_dir = os.path.join(dataset_root, 'RDVS/train')
+        elif dataset == 'vidsod_100':
+            lable_rgb = 'rgb'
+            lable_depth = 'depth'
+            lable_gt = 'gt'
+            lable_flow = 'flow'
+            
+            data_dir = os.path.join(dataset_root, 'vidsod_100/train')
+        elif dataset == 'dvisal':
+            lable_rgb = 'RGB'
+            lable_depth = 'Depth'
+            lable_gt = 'GT'
+            lable_flow = 'flow'
 
-        self.sub_images = []
-        self.sub_gts = []
-        self.sub_flows = []
-
-        if config.DATA['DAVIS_train_sub'] is not None:
-            sub_image_root = os.path.join(config.DATA['data_root'], config.DATA['DAVIS_train_sub'], 'RGB') + '/'
-            sub_gt_root = os.path.join(config.DATA['data_root'], config.DATA['DAVIS_train_sub'], 'GT') + '/'
-            sub_flow_root = os.path.join(config.DATA['data_root'], config.DATA['DAVIS_train_sub'], 'FLOW') + '/'
-
-            self.sub_images = [sub_image_root + f for f in os.listdir(sub_image_root) if f.endswith('.jpg')]
-            self.sub_gts = [sub_gt_root + f for f in os.listdir(sub_gt_root) if f.endswith('.jpg') or f.endswith('.png')]
-            self.sub_flows = [sub_flow_root + f for f in os.listdir(sub_flow_root) if f.endswith('.jpg') or f.endswith('.png')]
-
-            self.sub_images = sorted(self.sub_images)
-            self.sub_gts = sorted(self.sub_gts)
-            self.sub_flows = sorted(self.sub_flows)
-
-            self.sub_image_dict = self.get_image_class_dict(self.sub_images)
-            self.sub_flow_dict = self.get_image_class_dict(self.sub_flows)
-
-            sub = list(zip(self.sub_images, self.sub_gts, self.sub_flows))
-            random.shuffle(sub)
-            self.sub_images, self.sub_gts, self.sub_flows = zip(*sub)
-
-            self.sub_images = self.sub_images[:len(self.main_images)]
-            self.sub_gts = self.sub_gts[:len(self.main_images)]
-            self.sub_flows = self.sub_flows[:len(self.main_images)]
-
-        self.total_images = self.main_images + list(self.sub_images)
-        self.total_gts = self.main_gts + list(self.sub_gts)
-        self.total_flows = self.main_flows + list(self.sub_flows)
+            data_dir = os.path.join(dataset_root, 'DViSal_dataset/data')
+        else:
+            raise 'dataset is not support now.'
         
-        self.size = len(self.total_images)
+        if dataset == 'dvisal':
+            with open(os.path.join(data_dir, '../', 'train.txt'), mode='r') as f:
+                subsets = set(f.read().splitlines())
+        else:
+            subsets = os.listdir(data_dir)
+        
+        self.main_image_dict = {}
+        self.main_flow_dict = {}
+        self.frames = []
+        for video in subsets:
+            video_path = os.path.join(data_dir, video)
+            rgb_path = os.path.join(video_path, lable_rgb)
+            gt_path = os.path.join(video_path, lable_gt)
+            flow_path = os.path.join(video_path, lable_flow)
+            frames = os.listdir(rgb_path)
+            frames = sorted(frames)
+            for frame in frames[:-1]:
+                data = {}
+                data['img_path'] = os.path.join(rgb_path, frame)
+                if os.path.isfile(data['img_path']):
+                    data['gt_path'] = os.path.join(gt_path, frame.replace('jpg', 'png'))
+                    data['flow_path'] = os.path.join(flow_path, frame)
+                    data['split'] = video
+                    data['dataset'] = dataset
+                    if video not in self.main_image_dict:
+                        self.main_image_dict[video] = []
+                        self.main_flow_dict[video] = []
+                    self.main_image_dict[video].append(data['img_path'])
+                    self.main_flow_dict[video].append(data['flow_path'])
+                    self.frames.append(data)
+
+        
+        self.size = len(self.frames)
         
         self.img_transform = transforms.Compose([
             transforms.Resize((self.trainsize, self.trainsize)),
@@ -148,11 +158,12 @@ class SalObjDataset(data.Dataset):
         self.flows_transform = transforms.Compose([transforms.Resize((self.trainsize, self.trainsize)),transforms.ToTensor()])
 
     def __getitem__(self, index):
-        _class = ((self.total_images[index].split('/')[-1]).split('.')[0]).split('_')[0]
+        frame = self.frames[index]
+        _class = frame['split']
 
-        image = self.rgb_loader(self.total_images[index])
-        gt = self.binary_loader(self.total_gts[index])
-        flow = self.rgb_loader(self.total_flows[index])
+        image = self.rgb_loader(frame['img_path'])
+        gt = self.binary_loader(frame['gt_path'])
+        flow = self.rgb_loader(frame['flow_path'])
         
         image, gt, flow = cv_random_flip(image, gt, flow)
         image, gt, flow = randomCrop(image, gt, flow)
@@ -164,12 +175,12 @@ class SalObjDataset(data.Dataset):
         gt = self.gt_transform(gt)
         flow = self.flows_transform(flow)
 
-        try:
-            ref_image = self.main_image_dict[_class]
-            ref_flow = self.main_flow_dict[_class]
-        except:
-            ref_image = self.sub_image_dict[_class]
-            ref_flow = self.sub_flow_dict[_class]
+        # try:
+        ref_image = self.main_image_dict[_class]
+        ref_flow = self.main_flow_dict[_class]
+        # except:
+        #     ref_image = self.sub_image_dict[_class]
+        #     ref_flow = self.sub_flow_dict[_class]
 
         pairs = list(zip(ref_image, ref_flow))
         pairs = random.sample(pairs, 4)
@@ -239,9 +250,9 @@ class SalObjDataset(data.Dataset):
         return self.size
 
 
-def get_loader(shuffle=True, num_workers=12, pin_memory=False):
+def get_loader(data_root, dataset_, shuffle=True, num_workers=12, pin_memory=False):
 
-    dataset = SalObjDataset()
+    dataset = SalObjDataset(data_root, dataset_)
     data_loader = data.DataLoader(dataset=dataset,
                                   batch_size=config.TRAIN['batch_size'],
                                   shuffle=shuffle,

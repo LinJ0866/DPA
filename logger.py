@@ -33,9 +33,9 @@ class pttm():
 def get_current_time():
     return datetime.now(timezone('Asia/Seoul')).strftime('%Y-%m-%d %H:%M:%S')
 
-def make_new_work_space():
+def make_new_work_space(dataset):
     current_time = get_current_time()
-    new_root_dir = os.path.join("./log", current_time)
+    new_root_dir = os.path.join("./log", dataset, current_time)
     
     if not os.path.exists(new_root_dir):
         os.makedirs(new_root_dir)
