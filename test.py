@@ -111,7 +111,6 @@ def train(epoch, trainloader, optimizer, model, device, scheduler):
 #         PTTM = pttm()
         
 #         for idx, batch in enumerate(test_loader):
-#             PTTM.print_status(epoch, idx, test_loader)
 #             image, gt, flow, info, _, ref_images, ref_flows = batch
 
 #             B = image.shape[0]
@@ -164,94 +163,85 @@ def train(epoch, trainloader, optimizer, model, device, scheduler):
     
 #     return False
 
-# def visual(device, work_dir):
-#     model = DATA()
-#     model = model.to(device)
-#     model = torch.nn.DataParallel(model)
+def visual(test_loader, model, device, save_dir):
 
-#     model_dir = os.path.join(work_dir, "model")
+    with torch.no_grad():
+        for _, batch in enumerate(test_loader):
+            image, gt, flow, info, img_for_post, ref_images, ref_flows = batch
+            B = image.shape[0]
 
-#     checkpoint = torch.load(model_dir + "/best_model.pth")
-#     model.load_state_dict(checkpoint['model_state_dict'])
+            ori_H = info[0][0]
+            ori_W = info[0][1]
 
-#     test_loader = get_testloader(config.DATA['DAVIS_val'])
+            image = image.to(device)
+            flow = flow.to(device)
+            ref_images = ref_images.to(device)
+            ref_flows = ref_flows.to(device)
 
-#     model.eval()
-#     with torch.no_grad():
-#         for _, batch in enumerate(test_loader):
-#             image, gt, flow, info, img_for_post, ref_images, ref_flows = batch
-#             B = image.shape[0]
+            preds = model(image, flow, ref_images, ref_flows, 512)
 
-#             ori_H = info[0][0]
-#             ori_W = info[0][1]
+            flow = flow.permute(0, 2, 3, 1).cpu().detach()
 
-#             image = image.to(device)
-#             flow = flow.to(device)
-#             ref_images = ref_images.to(device)
-#             ref_flows = ref_flows.to(device)
+            res = preds[3]
 
-#             preds = model(image, flow, ref_images, ref_flows, 512)
-
-#             flow = flow.permute(0, 2, 3, 1).cpu().detach()
-
-#             res = preds[3]
-
-#             for b in range(B):
-#                 res_slice = res[b, :, :, :].unsqueeze(0)
-#                 gt_slice = gt[b, :, :, :].squeeze(0)
-#                 flow_slice = flow[b, :, :, :].squeeze(0)
-#                 ori_image_slice = img_for_post[b, :, :, :].squeeze(0)
+            for b in range(B):
+                res_slice = res[b, :, :, :].unsqueeze(0)
+                gt_slice = gt[b, :, :, :].squeeze(0)
+                flow_slice = flow[b, :, :, :].squeeze(0)
+                ori_image_slice = img_for_post[b, :, :, :].squeeze(0)
                 
-#                 gt_slice = np.asarray(gt_slice, np.float32)
-#                 gt_slice /= (gt_slice.max() + 1e-8)
+                gt_slice = np.asarray(gt_slice, np.float32)
+                gt_slice /= (gt_slice.max() + 1e-8)
                 
-#                 res_slice = F.upsample(res_slice, size=(ori_H[b].item(), ori_W[b].item()), mode='bilinear', align_corners=False)
-#                 res_slice = res_slice.permute(0, 2, 3, 1).cpu().detach().squeeze(0).squeeze(-1).numpy()
-#                 res_slice = (res_slice - res_slice.min()) / (res_slice.max() - res_slice.min() + 1e-8)
+                res_slice = F.upsample(res_slice, size=(ori_H[b].item(), ori_W[b].item()), mode='bilinear', align_corners=False)
+                res_slice = res_slice.permute(0, 2, 3, 1).cpu().detach().squeeze(0).squeeze(-1).numpy()
+                res_slice = (res_slice - res_slice.min()) / (res_slice.max() - res_slice.min() + 1e-8)
 
-#                 cat_res = cv2.cvtColor(np.array(res_slice * 255), cv2.COLOR_GRAY2BGR)
-#                 cat_res = cv2.resize(cat_res, dsize=(ori_H[b].item(), ori_W[b].item()), interpolation=cv2.INTER_AREA)
-#                 cat_res = cat_res.astype(np.uint8)
+                cat_res = cv2.cvtColor(np.array(res_slice * 255), cv2.COLOR_GRAY2BGR)
+                cat_res = cv2.resize(cat_res, dsize=(ori_H[b].item(), ori_W[b].item()), interpolation=cv2.INTER_AREA)
+                cat_res = cat_res.astype(np.uint8)
                 
-#                 cat_gt = cv2.cvtColor(np.array(gt_slice * 255), cv2.COLOR_GRAY2BGR)
-#                 cat_gt = cv2.resize(cat_gt, dsize=(ori_H[b].item(), ori_W[b].item()), interpolation=cv2.INTER_AREA)
-#                 cat_gt = cat_gt.astype(np.uint8)
+                # cat_gt = cv2.cvtColor(np.array(gt_slice * 255), cv2.COLOR_GRAY2BGR)
+                # cat_gt = cv2.resize(cat_gt, dsize=(ori_H[b].item(), ori_W[b].item()), interpolation=cv2.INTER_AREA)
+                # cat_gt = cat_gt.astype(np.uint8)
 
-#                 cat_flow = cv2.cvtColor(np.array(flow_slice * 255), cv2.COLOR_RGB2BGR)
-#                 cat_flow = cv2.resize(cat_flow, dsize=(ori_H[b].item(), ori_W[b].item()), interpolation=cv2.INTER_AREA)
-#                 cat_flow = cat_flow.astype(np.uint8)
+                # cat_flow = cv2.cvtColor(np.array(flow_slice * 255), cv2.COLOR_RGB2BGR)
+                # cat_flow = cv2.resize(cat_flow, dsize=(ori_H[b].item(), ori_W[b].item()), interpolation=cv2.INTER_AREA)
+                # cat_flow = cat_flow.astype(np.uint8)
 
-#                 cat_ori = cv2.cvtColor(np.array(ori_image_slice), cv2.COLOR_RGB2BGR)
-#                 cat_ori = cv2.resize(cat_ori, dsize=(ori_H[b].item(), ori_W[b].item()), interpolation=cv2.INTER_AREA)
-#                 cat_ori = cat_ori.astype(np.uint8)
+                # cat_ori = cv2.cvtColor(np.array(ori_image_slice), cv2.COLOR_RGB2BGR)
+                # cat_ori = cv2.resize(cat_ori, dsize=(ori_H[b].item(), ori_W[b].item()), interpolation=cv2.INTER_AREA)
+                # cat_ori = cat_ori.astype(np.uint8)
 
-#                 result = cv2.hconcat([cat_ori, cat_flow, cat_res, cat_gt])
+                # result = cv2.hconcat([cat_ori, cat_flow, cat_res, cat_gt])
 
-#                 valid_name = info[1][b]
-#                 name = info[2][b]
+                valid_name = info[1][b]
+                name = info[2][b]
 
-#                 total_dir = os.path.join(work_dir, "result", "total", valid_name)
-#                 if not os.path.exists(total_dir):
-#                     os.makedirs(total_dir)
+                # total_dir = os.path.join(work_dir, "result", "total", valid_name)
+                # if not os.path.exists(total_dir):
+                #     os.makedirs(total_dir)
                 
-#                 pred_dir = os.path.join(work_dir, "result", "pred", valid_name)
-#                 if not os.path.exists(pred_dir):
-#                     os.makedirs(pred_dir)
+                pred_dir = os.path.join(save_dir, valid_name)
+                if not os.path.exists(pred_dir):
+                    os.makedirs(pred_dir)
                 
-#                 gt_dir = os.path.join(work_dir, "result", "gt", valid_name)
-#                 if not os.path.exists(gt_dir):
-#                     os.makedirs(gt_dir)
+                # gt_dir = os.path.join(work_dir, "result", "gt", valid_name)
+                # if not os.path.exists(gt_dir):
+                #     os.makedirs(gt_dir)
 
-#                 cv2.imwrite(os.path.join(total_dir, name), result)
-#                 cv2.imwrite(os.path.join(pred_dir, name), cat_res)
-#                 cv2.imwrite(os.path.join(gt_dir, name), cat_gt)
+                # cv2.imwrite(os.path.join(total_dir, name), result)
+                cv2.imwrite(os.path.join(pred_dir, name), cat_res)
+                exit(0)
+                # cv2.imwrite(os.path.join(gt_dir, name), cat_gt)
 
 
 def main():
     parser = argparse.ArgumentParser()
     
-    parser.add_argument('--dataset_root', type=str, default='../data')  # 训练过程中输出的保存路径
-    parser.add_argument('--dataset', type=str, choices=['rdvs', 'vidsod_100', 'dvisal'])  # 训练过程中输出的保存路径
+    parser.add_argument('--dataset_root', type=str, default='../data')
+    parser.add_argument('--dataset', type=str, choices=['rdvs', 'vidsod_100', 'dvisal'])
+    parser.add_argument('--load', type=str, default=None)
 
     args = parser.parse_args()
 
@@ -265,41 +255,20 @@ def main():
 
     print("Load model...")
     model = DATA()
-    model.apply(weights_init)
-    model.rgb_encoder.vgg.load_state_dict(torch.load("./pretrain/vgg16_feat.pth"))
-    model.flow_encoder.vgg.load_state_dict(torch.load("./pretrain/vgg16_feat.pth"))
+    checkpoint = torch.load(args.load)
+    model.load_state_dict(checkpoint['model_state_dict'])
+
+    save_dir = os.path.join(os.path.dirname(args.load), 'output')
 
     # checkpoint = torch.load(config.DATA['best_pretrained_model'])
     # model = load_my_state_dict(model, checkpoint['model_state_dict'])
 
     model = model.to(device)
     model = torch.nn.DataParallel(model)
-    
-    num_params = sum([np.prod(p.size()) for p in model.parameters()])
-    print("Total number of parameters: {}".format(num_params))
-    num_params_update = sum([np.prod(p.shape) for p in model.parameters() if p.requires_grad])
-    print("Total number of learning parameters: {}".format(num_params_update))
-    print("ok!")
 
-    print("Load optimizer...")
-    params = model.parameters()
-    optimizer = torch.optim.Adam(params, config.TRAIN['learning_rate'])
+    test_loader = get_loader(args.dataset_root, args.dataset, mode='test')
 
-    train_loader = get_loader(args.dataset_root, args.dataset)
-    scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=len(train_loader)*config.TRAIN['epoch'], eta_min=config.TRAIN['learning_rate']/10)
-    print("ok!")
-
-    print("Training start!")
-    for epoch in range(config.TRAIN['epoch']):
-        # print("Load dataset...")
-        # train_loader = get_loader()
-        # print("ok!")
-        train(epoch, train_loader, optimizer, model, device, scheduler)
-        save_model(work_dir, epoch, model, 'latest')
-        # valid(epoch, model, device, work_dir)
-
-    # visual(device, work_dir)
-    print("Training finish!")
+    visual(test_loader, model, device, save_dir)
 
 
 if __name__ == '__main__':

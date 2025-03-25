@@ -85,7 +85,7 @@ def randomPeper(img):
 
 
 class SalObjDataset(data.Dataset):
-    def __init__(self, dataset_root, dataset):
+    def __init__(self, dataset_root, dataset, mode='train'):
         self.trainsize = config.TRAIN['img_size']
         
         if dataset == 'rdvs':
@@ -94,14 +94,20 @@ class SalObjDataset(data.Dataset):
             lable_gt = 'ground-truth'
             lable_flow = 'FLOW'
 
-            data_dir = os.path.join(dataset_root, 'RDVS/train')
+            if mode == 'train':
+                data_dir = os.path.join(dataset_root, 'RDVS/train')
+            else:
+                data_dir = os.path.join(dataset_root, 'RDVS/test')
         elif dataset == 'vidsod_100':
             lable_rgb = 'rgb'
             lable_depth = 'depth'
             lable_gt = 'gt'
             lable_flow = 'flow'
             
-            data_dir = os.path.join(dataset_root, 'vidsod_100/train')
+            if mode == 'train':
+                data_dir = os.path.join(dataset_root, 'vidsod_100/train')
+            else:
+                data_dir = os.path.join(dataset_root, 'vidsod_100/test')
         elif dataset == 'dvisal':
             lable_rgb = 'RGB'
             lable_depth = 'Depth'
@@ -109,11 +115,16 @@ class SalObjDataset(data.Dataset):
             lable_flow = 'flow'
 
             data_dir = os.path.join(dataset_root, 'DViSal_dataset/data')
+
+            if mode == 'train':
+                dvi_mode = 'train'
+            else:
+                dvi_mode = 'test_all'
         else:
             raise 'dataset is not support now.'
         
         if dataset == 'dvisal':
-            with open(os.path.join(data_dir, '../', 'train.txt'), mode='r') as f:
+            with open(os.path.join(data_dir, '../', dvi_mode+'.txt'), mode='r') as f:
                 subsets = set(f.read().splitlines())
         else:
             subsets = os.listdir(data_dir)
@@ -250,11 +261,15 @@ class SalObjDataset(data.Dataset):
         return self.size
 
 
-def get_loader(data_root, dataset_, shuffle=True, num_workers=12, pin_memory=False):
+def get_loader(data_root, dataset_, shuffle=True, num_workers=12, pin_memory=False, mode='train'):
 
-    dataset = SalObjDataset(data_root, dataset_)
+    dataset = SalObjDataset(data_root, dataset_, mode)
+    if mode == 'test':
+        bs = 1
+    else:
+        bs = config.TRAIN['batch_size']
     data_loader = data.DataLoader(dataset=dataset,
-                                  batch_size=config.TRAIN['batch_size'],
+                                  batch_size=bs,
                                   shuffle=shuffle,
                                   num_workers=num_workers,
                                   pin_memory=pin_memory,

@@ -18,6 +18,6 @@ TRAIN = {
     'epoch': 50,
     'learning_rate': 1e-4,
     'print_freq': 50,
-    'batch_size': 6,
+    'batch_size': 8,
     'img_size': 512
 }
